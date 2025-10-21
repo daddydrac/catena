@@ -1,0 +1,97 @@
+name: rag-end2end
+region: us-east-1
+profile: default
+tags: { project: rag-end2end, owner: platform }
+
+nodes:
+  - id: raw_bucket
+    type: s3.bucket
+    props: { bucket_name: rag-end2end-raw-12345, lifecycle_days_glacier: 30 }
+
+  - id: s3_producer
+    type: lambda.fn
+    props:
+      function_name: rag-s3-producer
+      runtime: python3.12
+      memory_mb: 512
+      timeout_s: 20
+      source_dir: lambda_src/ingester
+
+  - id: ingest_stream
+    type: kinesis.stream
+    props: { name: rag-ingest, shard_count: 1 }
+
+  - id: embedding_model
+    type: bedrock.model
+    props:
+      mode: embeddings
+      # Use Titan or import your own HF embedder separately if desired
+      model_id: amazon.titan-embed-text-v2:0
+
+  - id: chat_model
+    type: bedrock.model
+    props:
+      mode: chat
+      # Option A: use a foundation model already in Bedrock (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0)
+      # model_id: anthropic.claude-3-5-sonnet-20240620-v1:0
+      # Option B: import an HF open-source model into Bedrock Custom Models:
+      import_from_s3: s3://my-models/llama-3-8b-instruct/
+      model_name: hf-llama3-instruct
+      arch_hint: LLAMA_3
+
+  - id: transform_embed
+    type: lambda.fn
+    props:
+      function_name: rag-transform-embed
+      runtime: python3.12
+      memory_mb: 1024
+      timeout_s: 30
+      env:
+        EMBED_MODEL_ID: amazon.titan-embed-text-v2:0
+      source_dir: lambda_src/transform_embed
+
+  - id: vector_store
+    type: opensearch.vector
+    props:
+      serverless: true
+      collection_name: rag-vec
+      index_name: docs
+      dims: 1536
+
+  - id: firehose_to_os
+    type: firehose.delivery
+    props:
+      name: rag-delivery
+      source_stream: rag-ingest
+      transform_lambda: rag-transform-embed
+
+  - id: api
+    type: apigw.http
+    props: { name: rag-api }
+
+  - id: retriever
+    type: lambda.fn
+    props:
+      function_name: rag-retriever
+      runtime: python3.12
+      memory_mb: 1024
+      timeout_s: 30
+      env:
+        OPENSEARCH_INDEX: docs
+        COLLECTION_NAME: rag-vec
+        DIMS: "1536"
+        CHAT_MODEL_ID: ref:chat_model
+        EMBED_MODEL_ID: amazon.titan-embed-text-v2:0
+      source_dir: lambda_src/retriever
+
+edges:
+  - { from: raw_bucket, to: s3_producer,    via: s3_event }
+  - { from: s3_producer, to: ingest_stream, via: records }
+
+  - { from: ingest_stream, to: firehose_to_os, via: records }
+  - { from: transform_embed, to: firehose_to_os, via: transform }
+  - { from: vector_store, to: firehose_to_os, via: destination }
+
+  - { from: api, to: retriever, via: http }
+  - { from: vector_store, to: retriever, via: search }
+  - { from: chat_model, to: retriever, via: invoke }
