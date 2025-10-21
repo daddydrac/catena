@@ -89,9 +89,10 @@ edges:
   - { from: s3_producer, to: ingest_stream, via: records }
 
   - { from: ingest_stream, to: firehose_to_os, via: records }
-  - { from: transform_embed, to: firehose_to_os, via: transform }
+  - { from: transform_embed, to: embedding_model, via: invoke }
   - { from: vector_store, to: firehose_to_os, via: destination }
 
   - { from: api, to: retriever, via: http }
   - { from: vector_store, to: retriever, via: search }
   - { from: chat_model, to: retriever, via: invoke }
+  
