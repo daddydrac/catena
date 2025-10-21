@@ -78,3 +78,34 @@ Query path (separate DAG or shared):
 +----------+     +--------------------+      +---------------------+      +------------------+
                                          (top-k vectors)                 (prompted answer)
 ```
+
+## How to add more managed services (Neptune, DynamoDB, etc.)
+
+Create managed_svcs/<service>.py:
+```
+from typing import Any, Dict, List
+
+class NeptuneCluster:
+    NODE_KIND = "neptune.cluster"
+    IN_PORTS: List[str] = ["gremlin", "sparql"]
+    OUT_PORTS: List[str] = ["endpoint"]
+
+    @staticmethod
+    def deploy(node: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+        # boto3 deploy code here...
+        return {"endpoint": "https://..."}
+
+    @staticmethod
+    def wire(edge, refs, ctx) -> None:
+        # optional IAM/event wiring
+        return
+
+SERVICE = NeptuneCluster
+```
+
+Reference type: `neptune.cluster` in graph.yaml.
+
+The CLI will auto-register it next run.
+
+Complete, runnable scaffold, to stand up a secure PoC fast while keeping the design mathematically composable and extensible as your graph grows.
+
