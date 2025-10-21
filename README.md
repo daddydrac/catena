@@ -19,10 +19,39 @@ With this, your YAML is the category description; the CLI validates composition 
 ## How to use
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_DEFAULT_REGION=us-east-1
-# or: export AWS_PROFILE=yourprofile
+docker build -t catena:latest .
+
+# Use it like a CLI (interactive)
+# Shell in with your AWS creds mounted or env’d
+
+docker run --rm -it \
+  -e AWS_PROFILE=default \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -v $HOME/.aws:/home/app/.aws:ro \
+  -v $(pwd)/graph.yaml:/app/graph.yaml:ro \
+  catena:latest
+
+# One-off command (non-interactive)
+
+docker run --rm \
+  -e AWS_PROFILE=default \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -v $HOME/.aws:/home/app/.aws:ro \
+  -v $(pwd)/graph.yaml:/app/graph.yaml:ro \
+  catena:latest dagctl plan -f /app/graph.yaml
+
+# “Run infinity” then bash in later
+# Start and keep it alive
+
+docker run -d --name catena \
+  -e AWS_PROFILE=default \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -v $HOME/.aws:/home/app/.aws:ro \
+  -v $(pwd)/graph.yaml:/app/graph.yaml:ro \
+  catena:latest sleep infinity
+
+# Enter when you want
+docker exec -it catena bash -l
 
 python dagctl.py plan   -f graph.yaml
 python dagctl.py deploy -f graph.yaml
